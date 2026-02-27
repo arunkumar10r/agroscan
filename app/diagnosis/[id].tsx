@@ -39,7 +39,9 @@ export default function DiagnosisDetail() {
           {
             id: '0',
             role: 'assistant',
-            content: `Hello! I've analyzed your plant and detected **${found.diseaseName}** in your **${found.plantType}** with ${found.confidence}% confidence. Ask me anything about this diagnosis, treatment options, or plant care!`,
+            content: found.diseaseName.toLowerCase().includes('healthy')
+              ? `Hello! I've analyzed your **${found.plantType}** and it looks healthy with ${found.confidence}% confidence — no disease detected! Ask me anything about care tips, prevention, or general plant health.`
+              : `Hello! I've analyzed your **${found.plantType}** and identified **${found.diseaseName}** with ${found.confidence}% confidence. Ask me anything about this diagnosis, treatment options, or plant care!`,
             timestamp: Date.now(),
           },
         ]);

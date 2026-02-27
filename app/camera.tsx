@@ -126,15 +126,33 @@ export default function CameraScreen() {
     } catch (e) {
       console.error('Parse error:', e);
     }
-    // Fallback parsing from free text
+    // Fallback parsing from free text — default to healthy to avoid false positives
+    const lowerRaw = raw.toLowerCase();
+    const mentionsDisease =
+      lowerRaw.includes('blight') ||
+      lowerRaw.includes('mildew') ||
+      lowerRaw.includes('rust') ||
+      lowerRaw.includes('rot') ||
+      lowerRaw.includes('spot') ||
+      lowerRaw.includes('wilt') ||
+      lowerRaw.includes('fungal') ||
+      lowerRaw.includes('bacterial') ||
+      lowerRaw.includes('virus') ||
+      lowerRaw.includes('pest') ||
+      lowerRaw.includes('infected') ||
+      lowerRaw.includes('disease');
     return {
-      diseaseName: 'Analysis Complete',
+      diseaseName: mentionsDisease ? 'Disease Detected' : 'Healthy Plant',
       plantType: 'Plant',
-      confidence: 70,
-      description: raw.slice(0, 300),
-      biologicalTreatment: ['Consult a local agronomist for biological treatment options.'],
-      chemicalTreatment: ['Consult a local agronomist for chemical treatment options.'],
-      preventionTips: ['Maintain good soil health', 'Ensure proper irrigation'],
+      confidence: mentionsDisease ? 65 : 80,
+      description: raw.slice(0, 300) || 'Analysis complete. Please re-scan for a more detailed result.',
+      biologicalTreatment: mentionsDisease
+        ? ['Consult a local agronomist for biological treatment options.']
+        : ['No treatment needed - plant appears healthy', 'Continue regular watering schedule', 'Maintain adequate sunlight exposure'],
+      chemicalTreatment: mentionsDisease
+        ? ['Consult a local agronomist for chemical treatment options.']
+        : ['No chemical treatment required', 'Regular fertilization is sufficient'],
+      preventionTips: ['Maintain good soil health', 'Ensure proper irrigation', 'Rotate crops regularly'],
     };
   };
 
@@ -143,15 +161,30 @@ export default function CameraScreen() {
     try {
       const result = await analyzeImage({
         imageUrl: imageUri,
-        prompt: `You are an expert plant pathologist. Analyze this plant image for diseases and health issues. Respond with ONLY a valid JSON object (no markdown, no extra text):
+        prompt: `You are an expert plant pathologist performing a precise diagnostic assessment. Your task is to examine the plant image and determine if it is HEALTHY or DISEASED based only on clearly visible symptoms.
+
+STEP 1 — Visual inspection checklist:
+- Leaf color: Is it uniformly green? (Healthy) OR yellow/brown/black patches? (Diseased)
+- Leaf surface: Is it smooth and clean? (Healthy) OR powdery, spotted, or lesioned? (Diseased)
+- Leaf edges: Are they intact? (Healthy) OR scorched, curled, or necrotic? (Diseased)
+- Overall vigor: Upright and firm? (Healthy) OR wilting, drooping, stunted? (Diseased)
+- Pests/mold: None visible? (Healthy) OR webbing, insects, fungal growth visible? (Diseased)
+
+STEP 2 — Decision rule:
+- If 3 or more of the above indicators point to HEALTHY → classify as "Healthy Plant", confidence ≥ 80
+- Only classify as diseased if you can clearly name a specific disease with visible evidence
+- When in doubt, classify as "Healthy Plant"
+- Do NOT assume disease from minor variations in color or lighting
+
+STEP 3 — Respond with ONLY this valid JSON object (no markdown, no extra text):
 {
-  "diseaseName": "specific disease name or 'Healthy Plant'",
-  "plantType": "identified plant type (e.g., 'Tomato', 'Rose', 'Wheat')",
-  "confidence": 87,
-  "description": "2-3 sentence description of the plant condition and its impact on the plant",
-  "biologicalTreatment": ["biological method 1", "biological method 2", "biological method 3"],
-  "chemicalTreatment": ["chemical treatment 1", "chemical treatment 2"],
-  "preventionTips": ["prevention tip 1", "prevention tip 2", "prevention tip 3"]
+  "diseaseName": "Healthy Plant OR specific disease name (e.g. 'Powdery Mildew', 'Early Blight', 'Leaf Rust')",
+  "plantType": "identified plant species (e.g. 'Tomato', 'Rose', 'Wheat', 'Maize')",
+  "confidence": 85,
+  "description": "2-3 sentences describing what you observed in the image and the plant's condition",
+  "biologicalTreatment": ["Only include if diseased, else use ['No treatment needed - plant is healthy', 'Continue regular watering schedule', 'Maintain adequate sunlight exposure']"],
+  "chemicalTreatment": ["Only include if diseased, else use ['No chemical treatment required', 'Regular fertilization is sufficient']"],
+  "preventionTips": ["Tip specific to this plant type and condition"]
 }`,
       });
 
