@@ -2,6 +2,9 @@ module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
+    // react-native-reanimated/plugin (which re-exports react-native-worklets/plugin)
+    // MUST be the last plugin entry so it can correctly transform worklets.
+    plugins: ['react-native-reanimated/plugin'],
     overrides: [
       {
         // Include @fastshot/* packages for env var inlining
