@@ -159,9 +159,11 @@ export default function CameraScreen() {
   const handleAnalyze = async (imageUri: string) => {
     setIsProcessing(true);
     try {
-      const result = await analyzeImage({
-        imageUrl: imageUri,
-        prompt: `You are an expert plant pathologist performing a precise diagnostic assessment. Your task is to examine the plant image and determine if it is HEALTHY or DISEASED based only on clearly visible symptoms.
+      let result: string | null | undefined;
+      try {
+        result = await analyzeImage({
+          imageUrl: imageUri,
+          prompt: `You are an expert plant pathologist performing a precise diagnostic assessment. Your task is to examine the plant image and determine if it is HEALTHY or DISEASED based only on clearly visible symptoms.
 
 STEP 1 — Visual inspection checklist:
 - Leaf color: Is it uniformly green? (Healthy) OR yellow/brown/black patches? (Diseased)
@@ -186,11 +188,61 @@ STEP 3 — Respond with ONLY this valid JSON object (no markdown, no extra text)
   "chemicalTreatment": ["Only include if diseased, else use ['No chemical treatment required', 'Regular fertilization is sufficient']"],
   "preventionTips": ["Tip specific to this plant type and condition"]
 }`,
-      });
+        });
+      } catch (networkErr: unknown) {
+        setIsProcessing(false);
+        console.error('Network/AI error:', networkErr);
+        const message = networkErr instanceof Error ? networkErr.message : String(networkErr);
+        const isNetworkError =
+          message.toLowerCase().includes('network') ||
+          message.toLowerCase().includes('fetch') ||
+          message.toLowerCase().includes('timeout') ||
+          message.toLowerCase().includes('connection') ||
+          message.toLowerCase().includes('econnrefused') ||
+          message.toLowerCase().includes('offline');
+        if (isNetworkError) {
+          Alert.alert(
+            'No Connection',
+            'Unable to reach the analysis server. Please check your internet connection and try again.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            'Analysis Unavailable',
+            'The AI service is temporarily unavailable. Please try again in a moment.',
+            [{ text: 'OK' }]
+          );
+        }
+        return;
+      }
 
-      if (!result) throw new Error('No analysis result');
+      if (!result || result.trim().length === 0) {
+        setIsProcessing(false);
+        Alert.alert(
+          'Empty Response',
+          'The AI returned no data. Please retake the photo in better lighting and try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
-      const parsed = parseAIResponse(result);
+      let parsed: Partial<ScanResult>;
+      try {
+        parsed = parseAIResponse(result);
+      } catch (parseErr) {
+        console.error('Unexpected parse error:', parseErr);
+        // parseAIResponse has its own internal fallback, but guard anyway
+        parsed = {
+          diseaseName: 'Unknown Condition',
+          plantType: 'Plant',
+          confidence: 60,
+          description: 'Analysis completed but the result could not be fully interpreted.',
+          biologicalTreatment: ['Consult a local agronomist for biological treatment options.'],
+          chemicalTreatment: ['Consult a local agronomist for chemical treatment options.'],
+          preventionTips: ['Maintain good soil health', 'Ensure proper irrigation', 'Rotate crops regularly'],
+        };
+      }
+
       const scan: ScanResult = {
         id: Date.now().toString(),
         timestamp: Date.now(),
@@ -204,15 +256,23 @@ STEP 3 — Respond with ONLY this valid JSON object (no markdown, no extra text)
         preventionTips: parsed.preventionTips || [],
       };
 
-      await addScan(scan);
+      try {
+        await addScan(scan);
+      } catch (storageErr) {
+        console.error('Storage error:', storageErr);
+        // Non-fatal — still navigate to the result even if saving failed
+      }
+
       setIsProcessing(false);
       router.replace(`/diagnosis/${scan.id}` as any);
     } catch (err) {
       setIsProcessing(false);
-      console.error('Analysis error:', err);
-      Alert.alert('Analysis Failed', 'Could not analyze the image. Please try again.', [
-        { text: 'OK' },
-      ]);
+      console.error('Unexpected analysis error:', err);
+      Alert.alert(
+        'Something Went Wrong',
+        'An unexpected error occurred during analysis. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 

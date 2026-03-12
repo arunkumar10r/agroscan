@@ -6,6 +6,7 @@ import Animated, {
   withTiming,
   withDelay,
   Easing,
+  runOnJS,
 } from 'react-native-reanimated';
 
 interface SproutAnimationProps {
@@ -23,7 +24,11 @@ export default function SproutAnimation({ size = 80 }: SproutAnimationProps) {
   const easing = Easing.out(Easing.cubic);
 
   useEffect(() => {
-    const loop = () => {
+    // startAnimation must be declared as a regular function (not arrow)
+    // so that runOnJS can safely marshal it back to the JS thread
+    // from within the withTiming worklet callback.
+    function startAnimation() {
+      // Reset all values before each cycle
       stemScale.value = 0;
       leafLeftScale.value = 0;
       leafRightScale.value = 0;
@@ -40,17 +45,20 @@ export default function SproutAnimation({ size = 80 }: SproutAnimationProps) {
       leafRightOpacity.value = withDelay(700, withTiming(1, { duration: 200 }));
       leafRightScale.value = withDelay(700, withTiming(1, { duration: 400, easing }));
 
+      // Fade out — when done, restart the cycle via runOnJS so it runs
+      // on the JS thread (the withTiming callback is a worklet and cannot
+      // directly call a plain JS closure).
       stemOpacity.value = withDelay(
         1600,
-        withTiming(0, { duration: 400 }, () => {
-          loop();
+        withTiming(0, { duration: 400 }, (finished) => {
+          if (finished) runOnJS(startAnimation)();
         })
       );
       leafLeftOpacity.value = withDelay(1600, withTiming(0, { duration: 400 }));
       leafRightOpacity.value = withDelay(1600, withTiming(0, { duration: 400 }));
-    };
+    }
 
-    loop();
+    startAnimation();
   }, []);
 
   const stemStyle = useAnimatedStyle(() => ({
